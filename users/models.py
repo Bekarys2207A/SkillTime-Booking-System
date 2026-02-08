@@ -2,6 +2,7 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseU
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.utils import timezone
 
 # Create your models here.
 
@@ -56,3 +57,31 @@ class TeacherProfile(models.Model):
 def create_teacher_profile(sender, instance, created, **kwargs):
     if created and instance.role == 'teacher':
         TeacherProfile.objects.create(user=instance)
+
+
+class RefreshToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    token = models.CharField(max_length=255, unique=True)
+    expires_at = models.DateTimeField()
+    revoked = models.BooleanField(default=False)
+
+    def is_valid(self):
+        return not self.revoked and self.expires_at > timezone.now()
+
+    def __str__(self):
+        return f"Token for {self.user.email} (revoked={self.revoked})"
+
+
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    token = models.CharField(max_length=255, unique=True)
+    used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    def is_valid(self):
+        return not self.used and self.expires_at > timezone.now()
+
+    def __str__(self):
+        return f"ResetToken for {self.user.email} (used={self.used})"
+    
