@@ -1,6 +1,7 @@
 from datetime import timedelta
 from django.utils import timezone
 from .models import LessonSlot
+from django_redis import get_redis_connection
 
 def generate_slots_for_lesson(lesson, start_time, count=3):
     slots = []
@@ -14,3 +15,10 @@ def generate_slots_for_lesson(lesson, start_time, count=3):
         )
         slots.append(slot)
     LessonSlot.objects.bulk_create(slots)
+    
+
+def invalidate_lesson_cache(lesson_id):
+    redis = get_redis_connection("default")
+    keys = redis.keys(f"avail:{lesson_id}:*")  
+    if keys:
+        redis.delete(*keys)
