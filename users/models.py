@@ -7,9 +7,9 @@ from django.utils import timezone
 # Create your models here.
 
 class UserManager(BaseUserManager):
-    def create_user(self, email, password=None, role='user', **extra_fields):
+    def create_user(self, email, password=None, role="user", **extra_fields):
         if not email:
-            raise ValueError('Email обязателен')
+            raise ValueError("Email обязателен")
         email = self.normalize_email(email)
         user = self.model(email=email, role=role, **extra_fields)
         user.set_password(password)
@@ -17,27 +17,32 @@ class UserManager(BaseUserManager):
         return user
 
     def create_superuser(self, email, password=None, **extra_fields):
-        extra_fields.setdefault('is_staff', True)
-        extra_fields.setdefault('is_superuser', True)
-        return self.create_user(email, password, role='admin', **extra_fields)
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        return self.create_user(email, password, role="admin", **extra_fields)
 
 
 class User(AbstractBaseUser, PermissionsMixin):
+    ROLE_USER = "user"
+    ROLE_TEACHER = "teacher"
+    ROLE_ADMIN = "admin"
+
     ROLE_CHOICES = (
-        ('user', 'User'),
-        ('teacher', 'Teacher'),
-        ('admin', 'Admin'),
+        (ROLE_USER, "User"),
+        (ROLE_TEACHER, "Teacher"),
+        (ROLE_ADMIN, "Admin"),
     )
 
     email = models.EmailField(unique=True)
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user')
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_USER)
+
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     objects = UserManager()
 
-    USERNAME_FIELD = 'email'
+    USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
     def __str__(self):
@@ -45,7 +50,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 
 class TeacherProfile(models.Model):
-    user = models.OneToOneField('users.User', on_delete=models.CASCADE, related_name='teacher_profile')
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="teacher_profile")
     bio = models.TextField(blank=True)
     rating = models.FloatField(default=0.0)
 
@@ -55,32 +60,32 @@ class TeacherProfile(models.Model):
 
 @receiver(post_save, sender=User)
 def create_teacher_profile(sender, instance, created, **kwargs):
-    if created and instance.role == 'teacher':
+    if created and instance.role == User.ROLE_TEACHER:
         TeacherProfile.objects.create(user=instance)
 
 
 class RefreshToken(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="refresh_tokens")
     token = models.CharField(max_length=255, unique=True)
     expires_at = models.DateTimeField()
     revoked = models.BooleanField(default=False)
 
     def is_valid(self):
-        return not self.revoked and self.expires_at > timezone.now()
+        return (not self.revoked) and self.expires_at > timezone.now()
 
     def __str__(self):
         return f"Token for {self.user.email} (revoked={self.revoked})"
 
 
 class PasswordResetToken(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="password_reset_tokens")
     token = models.CharField(max_length=255, unique=True)
     used = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
 
     def is_valid(self):
-        return not self.used and self.expires_at > timezone.now()
+        return (not self.used) and self.expires_at > timezone.now()
 
     def __str__(self):
         return f"ResetToken for {self.user.email} (used={self.used})"

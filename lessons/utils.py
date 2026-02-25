@@ -19,6 +19,7 @@ def generate_slots_for_lesson(lesson, start_time, count=3):
 
 def invalidate_lesson_cache(lesson_id):
     redis = get_redis_connection("default")
-    keys = redis.keys(f"avail:{lesson_id}:*")  
-    if keys:
-        redis.delete(*keys)
+    pattern = f"avail:{lesson_id}:*"
+
+    for key in redis.scan_iter(pattern):
+        redis.delete(key)
