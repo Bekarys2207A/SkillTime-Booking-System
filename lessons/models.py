@@ -43,9 +43,10 @@ class LessonSlot(models.Model):
     class Meta:
         ordering = ['starts_at']  
         indexes = [
-            models.Index(fields=['starts_at', 'ends_at']),  
-            models.Index(fields=['status']),               
+            models.Index(fields=["lesson", "starts_at"]),
+            models.Index(fields=["status"]),
         ]
+        
         constraints = [
             models.UniqueConstraint(
                 fields=['lesson', 'starts_at'],  

@@ -33,22 +33,27 @@ class RegisterView(APIView):
             expires_at=timezone.now() + settings.JWT_REFRESH_TOKEN_LIFETIME,
         )
 
-        return Response({
-            "access_token": make_access_token(user),
-            "refresh_token": refresh,
-        }, status=201)
+        return Response(
+            {"access_token": make_access_token(user), "refresh_token": refresh},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = "login"  
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         user = User.objects.filter(email=serializer.validated_data["email"]).first()
-        if not user or not user.check_password(serializer.validated_data["password"]):
-            return Response({"detail": "Invalid credentials"}, status=401)
+        if (
+            not user
+            or not user.is_active
+            or not user.check_password(serializer.validated_data["password"])
+        ):
+            return Response({"detail": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
         refresh = make_refresh_token()
         RefreshToken.objects.create(
@@ -57,10 +62,7 @@ class LoginView(APIView):
             expires_at=timezone.now() + settings.JWT_REFRESH_TOKEN_LIFETIME,
         )
 
-        return Response({
-            "access_token": make_access_token(user),
-            "refresh_token": refresh,
-        })
+        return Response({"access_token": make_access_token(user), "refresh_token": refresh})
 
 
 class RefreshView(APIView):
@@ -75,11 +77,13 @@ class RefreshView(APIView):
         rtoken = get_object_or_404(RefreshToken.objects.select_for_update(), token=token)
 
         if not rtoken.is_valid():
-            return Response({"detail": "Invalid token"}, status=401)
+            return Response({"detail": "Invalid token"}, status=status.HTTP_401_UNAUTHORIZED)
 
+        # revoke old
         rtoken.revoked = True
         rtoken.save()
 
+        # rotate
         new_refresh = make_refresh_token()
         RefreshToken.objects.create(
             user=rtoken.user,
@@ -87,10 +91,7 @@ class RefreshView(APIView):
             expires_at=timezone.now() + settings.JWT_REFRESH_TOKEN_LIFETIME,
         )
 
-        return Response({
-            "access_token": make_access_token(rtoken.user),
-            "refresh_token": new_refresh,
-        })
+        return Response({"access_token": make_access_token(rtoken.user), "refresh_token": new_refresh})
 
 
 class LogoutView(APIView):
@@ -110,12 +111,14 @@ class LogoutView(APIView):
 
 class ForgotPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = "forgot"  
 
     def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         user = User.objects.filter(email=serializer.validated_data["email"]).first()
+        # не раскрываем существует ли email
         if not user:
             return Response({"detail": "If email exists, link sent"})
 
@@ -147,13 +150,16 @@ class ResetPasswordView(APIView):
 
         payload = verify_reset_token(serializer.validated_data["token"])
         if not payload:
-            return Response({"detail": "Invalid token"}, status=400)
+            return Response({"detail": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
 
         prt = get_object_or_404(
-            PasswordResetToken,
+            PasswordResetToken.objects.select_for_update(),
             token=serializer.validated_data["token"],
             used=False,
         )
+
+        if not prt.is_valid():
+            return Response({"detail": "Token expired"}, status=status.HTTP_400_BAD_REQUEST)
 
         user = prt.user
         user.set_password(serializer.validated_data["new_password"])
@@ -170,8 +176,4 @@ class MeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        return Response({
-            "id": request.user.id,
-            "email": request.user.email,
-            "role": request.user.role,
-        })
+        return Response({"id": request.user.id, "email": request.user.email, "role": request.user.role})
