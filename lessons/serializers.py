@@ -12,3 +12,7 @@ class LessonSerializer(serializers.ModelSerializer):
         if request and request.user.role == 'teacher':
             validated_data['teacher'] = request.user
         return super().create(validated_data)
+    
+
+class HoldSlotSerializer(serializers.Serializer):
+    slot_id = serializers.IntegerField()
