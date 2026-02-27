@@ -2,6 +2,7 @@ from datetime import timedelta
 from django_redis import get_redis_connection
 from .models import LessonSlot
 
+
 def generate_slots_for_lesson(lesson, start_time, count=3):
     slots = []
     for i in range(count):
@@ -20,10 +21,11 @@ def generate_slots_for_lesson(lesson, start_time, count=3):
 def invalidate_lesson_cache(lesson_id: int):
     redis = get_redis_connection("default")
     pattern = f"avail:{lesson_id}:*"
-    for key in redis.scan_iter(pattern):
+
+    for key in redis.scan_iter(match=pattern):
         redis.delete(key)
 
 
-def invalidate_availability_cache(lesson_id: int, date_str: str):
+def invalidate_availability_cache(*, lesson_id: int, date_str: str):
     redis = get_redis_connection("default")
     redis.delete(f"avail:{lesson_id}:{date_str}")
