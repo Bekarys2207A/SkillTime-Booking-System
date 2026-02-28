@@ -2,7 +2,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 from django_redis import get_redis_connection
-from rest_framework.exceptions import ValidationError,  PermissionDenied
+from rest_framework.exceptions import ValidationError, PermissionDenied
 
 from lessons.models import LessonSlot
 from lessons.utils import invalidate_availability_cache
@@ -27,8 +27,7 @@ class BookingConfirmService:
             cached_booking_id = redis.get(stored_key)
             if cached_booking_id:
                 booking_id = cached_booking_id.decode("utf-8")
-                booking = Booking.objects.get(id=booking_id)
-                return booking
+                return Booking.objects.get(id=booking_id)
 
         lock_key = f"lock:slot:{slot_id}"
         lock = redis.lock(
@@ -43,15 +42,19 @@ class BookingConfirmService:
 
         try:
             with transaction.atomic():
-                slot = (
-                    LessonSlot.objects.select_for_update()
-                    .get(id=slot_id, lesson_id=lesson_id)
-                )
+                try:
+                    slot = (
+                        LessonSlot.objects
+                        .select_for_update()
+                        .get(id=slot_id, lesson_id=lesson_id)
+                    )
+                except LessonSlot.DoesNotExist:
+                    raise ValidationError({"slot_id": "Slot not found for this lesson."})
 
                 if slot.status != LessonSlot.STATUS_HELD:
                     raise ValidationError({"detail": "Slot is not held."})
 
-                if slot.held_by_id != user.id:
+                if slot.held_by_id != user.id and user.role != "admin":
                     raise ValidationError({"detail": "Slot is held by another user."})
 
                 if not slot.held_until or slot.held_until <= timezone.now():
@@ -64,6 +67,8 @@ class BookingConfirmService:
                     user=user,
                     lesson_id=lesson_id,
                     slot=slot,
+                    starts_at=slot.starts_at,
+                    ends_at=slot.ends_at,
                     status=Booking.STATUS_CONFIRMED,
                     idempotency_key=idempotency_key,
                 )
@@ -73,14 +78,18 @@ class BookingConfirmService:
                 slot.held_until = None
                 slot.save(update_fields=["status", "held_by", "held_until"])
 
-                date_str = slot.starts_at.date().isoformat()
-                invalidate_availability_cache(lesson_id=lesson_id, date_str=date_str)
-
                 if idempotency_key:
                     stored_key = BookingConfirmService._idempotency_key_storage_key(user.id, idempotency_key)
-                    redis.setex(stored_key, BookingConfirmService.IDEMPOTENCY_TTL_SECONDS, str(booking.id))
+                    redis.setex(
+                        stored_key,
+                        BookingConfirmService.IDEMPOTENCY_TTL_SECONDS,
+                        str(booking.id),
+                    )
 
-                return booking
+            date_str = booking.starts_at.date().isoformat()
+            invalidate_availability_cache(lesson_id=lesson_id, date_str=date_str)
+
+            return booking
 
         finally:
             try:
@@ -93,38 +102,39 @@ class BookingCancelService:
     @staticmethod
     def cancel(*, booking_id, user):
         with transaction.atomic():
-            booking = (
-                Booking.objects.select_for_update()
-                .select_related("slot", "lesson")
-                .get(id=booking_id)
-            )
+            try:
+                booking = (
+                    Booking.objects
+                    .select_for_update()
+                    .select_related("slot")
+                    .get(id=booking_id)
+                )
+            except Booking.DoesNotExist:
+                raise ValidationError({"detail": "Booking not found."})
 
             if user.role != "admin" and booking.user_id != user.id:
                 raise PermissionDenied("You cannot cancel this booking.")
 
-            if booking.status == Booking.STATUS_CANCELED:
+            if booking.status == Booking.STATUS_CANCELLED:
                 return booking
 
             if booking.status != Booking.STATUS_CONFIRMED:
                 raise ValidationError({"detail": "Only confirmed bookings can be cancelled."})
 
-            slot = (
-                LessonSlot.objects
-                .select_for_update()
-                .get(id=booking.slot_id)
-            )
+            slot = booking.slot   
 
-            if slot.status == LessonSlot.STATUS_BOOKED:
+            if slot and slot.status == LessonSlot.STATUS_BOOKED:
                 slot.status = LessonSlot.STATUS_AVAILABLE
                 slot.save(update_fields=["status"])
 
-            booking.status = Booking.STATUS_CANCELED
+            booking.status = Booking.STATUS_CANCELLED
             booking.save(update_fields=["status"])
 
-            date_str = slot.starts_at.date().isoformat()
+        if slot:
+            date_str = booking.starts_at.date().isoformat()
             invalidate_availability_cache(
                 lesson_id=booking.lesson_id,
                 date_str=date_str
             )
 
-            return booking
+        return booking
