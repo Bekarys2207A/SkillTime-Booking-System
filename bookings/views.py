@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError, PermissionDenied
 
 from .serializers import ConfirmBookingSerializer
-from .services import BookingConfirmService
+from .services import BookingConfirmService, BookingCancelService
 
 # Create your views here.
 
@@ -44,4 +44,25 @@ class ConfirmBookingView(APIView):
                 "status": booking.status,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class CancelBookingView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "confirm"  
+
+    def post(self, request, booking_id):
+
+        booking = BookingCancelService.cancel(
+            booking_id=booking_id,
+            user=request.user
+        )
+
+        return Response(
+            {
+                "booking_id": str(booking.id),
+                "status": booking.status,
+            },
+            status=status.HTTP_200_OK
         )

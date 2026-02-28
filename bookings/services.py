@@ -2,7 +2,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 from django_redis import get_redis_connection
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError,  PermissionDenied
 
 from lessons.models import LessonSlot
 from lessons.utils import invalidate_availability_cache
@@ -87,3 +87,44 @@ class BookingConfirmService:
                 lock.release()
             except Exception:
                 pass
+
+
+class BookingCancelService:
+    @staticmethod
+    def cancel(*, booking_id, user):
+        with transaction.atomic():
+            booking = (
+                Booking.objects.select_for_update()
+                .select_related("slot", "lesson")
+                .get(id=booking_id)
+            )
+
+            if user.role != "admin" and booking.user_id != user.id:
+                raise PermissionDenied("You cannot cancel this booking.")
+
+            if booking.status == Booking.STATUS_CANCELED:
+                return booking
+
+            if booking.status != Booking.STATUS_CONFIRMED:
+                raise ValidationError({"detail": "Only confirmed bookings can be cancelled."})
+
+            slot = (
+                LessonSlot.objects
+                .select_for_update()
+                .get(id=booking.slot_id)
+            )
+
+            if slot.status == LessonSlot.STATUS_BOOKED:
+                slot.status = LessonSlot.STATUS_AVAILABLE
+                slot.save(update_fields=["status"])
+
+            booking.status = Booking.STATUS_CANCELED
+            booking.save(update_fields=["status"])
+
+            date_str = slot.starts_at.date().isoformat()
+            invalidate_availability_cache(
+                lesson_id=booking.lesson_id,
+                date_str=date_str
+            )
+
+            return booking
