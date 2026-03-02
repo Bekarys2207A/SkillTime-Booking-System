@@ -14,6 +14,7 @@ from datetime import timedelta
 from pathlib import Path
 import os
 import environ
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -174,3 +175,21 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+
+
+CELERY_BEAT_SCHEDULE = {
+    "release-expired-holds-every-minute": {
+        "task": "lessons.tasks.release_expired_holds",
+        "schedule": 60.0,
+    },
+    "cleanup-uploads-daily": {
+        "task": "files.tasks.cleanup_uploads",
+        "schedule": crontab(hour=3, minute=0),
+        "args": (30,),
+    },
+    "archive-bookings-daily": {
+        "task": "bookings.tasks.archive_bookings",
+        "schedule": crontab(hour=3, minute=30),
+        "args": (7,),
+    },
+}
