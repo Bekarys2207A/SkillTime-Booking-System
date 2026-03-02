@@ -6,11 +6,13 @@ class Booking(models.Model):
     STATUS_PENDING = "pending"
     STATUS_CONFIRMED = "confirmed"
     STATUS_CANCELLED = "cancelled"   
+    STATUS_ARCHIVED = "archived" 
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
         (STATUS_CONFIRMED, "Confirmed"),
         (STATUS_CANCELLED, "Cancelled"),
+        (STATUS_ARCHIVED, "Archived"), 
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

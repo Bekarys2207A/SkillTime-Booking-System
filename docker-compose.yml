@@ -18,6 +18,38 @@ services:
     ports:
       - "${APP_PORT:-8000}:8000"
 
+  celery:
+    build:
+      context: .
+    container_name: skilltime_celery
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: celery -A skilltime worker -l info
+
+  celery-beat:
+    build:
+      context: .
+    container_name: skilltime_celery_beat
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: celery -A skilltime beat -l info
+
   postgres:
     image: postgres:16
     container_name: skilltime_postgres
