@@ -8,6 +8,9 @@ from lessons.models import LessonSlot
 from lessons.utils import invalidate_availability_cache
 from .models import Booking
 
+from audit.services import AuditService
+from audit.models import AuditLog
+
 
 class BookingConfirmService:
     IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60
@@ -86,6 +89,29 @@ class BookingConfirmService:
                         str(booking.id),
                     )
 
+                AuditService.log(
+                    actor=user,
+                    action=AuditLog.ACTION_CONFIRM,
+                    entity="Booking",
+                    entity_id=booking.id,
+                    meta={
+                        "lesson_id": lesson_id,
+                        "slot_id": slot.id,
+                        "status": booking.status,
+                        "idempotency_key": idempotency_key,
+                        "starts_at": booking.starts_at.isoformat(),
+                        "ends_at": booking.ends_at.isoformat(),
+                    },
+                )
+
+                AuditService.log(
+                    actor=user,
+                    action=AuditLog.ACTION_STATUS_CHANGE,
+                    entity="LessonSlot",
+                    entity_id=slot.id,
+                    meta={"from_status": "held", "to_status": "booked", "lesson_id": lesson_id},
+                )
+
             date_str = booking.starts_at.date().isoformat()
             invalidate_availability_cache(lesson_id=lesson_id, date_str=date_str)
 
@@ -121,7 +147,7 @@ class BookingCancelService:
             if booking.status != Booking.STATUS_CONFIRMED:
                 raise ValidationError({"detail": "Only confirmed bookings can be cancelled."})
 
-            slot = booking.slot   
+            slot = booking.slot
 
             if slot and slot.status == LessonSlot.STATUS_BOOKED:
                 slot.status = LessonSlot.STATUS_AVAILABLE
@@ -129,6 +155,23 @@ class BookingCancelService:
 
             booking.status = Booking.STATUS_CANCELLED
             booking.save(update_fields=["status"])
+
+            AuditService.log(
+                actor=user,
+                action=AuditLog.ACTION_CANCEL,
+                entity="Booking",
+                entity_id=booking.id,
+                meta={"lesson_id": booking.lesson_id, "slot_id": booking.slot_id, "status": booking.status},
+            )
+
+            if slot:
+                AuditService.log(
+                    actor=user,
+                    action=AuditLog.ACTION_STATUS_CHANGE,
+                    entity="LessonSlot",
+                    entity_id=slot.id,
+                    meta={"from_status": "booked", "to_status": "available", "lesson_id": booking.lesson_id},
+                )
 
         if slot:
             date_str = booking.starts_at.date().isoformat()
