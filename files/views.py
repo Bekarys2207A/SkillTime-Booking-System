@@ -8,7 +8,9 @@ from django.shortcuts import get_object_or_404
 from lessons.models import Lesson
 from .services import FileUploadService
 
-# Create your views here.
+from audit.services import AuditService
+from audit.models import AuditLog
+
 
 class LessonFileUploadView(APIView):
     permission_classes = [IsAuthenticated]
@@ -24,7 +26,6 @@ class LessonFileUploadView(APIView):
             raise PermissionDenied("You cannot upload to another teacher's lesson.")
 
         uploaded_file = request.FILES.get("file")
-
         if not uploaded_file:
             raise ValidationError({"file": "File is required."})
 
@@ -34,8 +35,21 @@ class LessonFileUploadView(APIView):
             uploaded_file=uploaded_file,
         )
 
+        AuditService.log(
+            actor=request.user,
+            action=AuditLog.ACTION_FILE_UPLOAD,
+            entity="FileUpload",
+            entity_id=file_obj.id,
+            meta={
+                "lesson_id": lesson.id,
+                "mime": file_obj.mime,
+                "size_bytes": file_obj.size_bytes,
+                "path": file_obj.file.name,
+            },
+        )
+
         return Response({
-            "file_id": file_obj.id,
+            "file_id": str(file_obj.id),
             "lesson_id": lesson.id,
             "file_url": file_obj.file.url,
             "mime": file_obj.mime,

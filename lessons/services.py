@@ -7,6 +7,9 @@ from rest_framework.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from .models import LessonSlot
 
+from audit.services import AuditService
+from audit.models import AuditLog
+
 
 class AvailabilityService:
     CACHE_TTL = 60
@@ -58,8 +61,8 @@ class AvailabilityService:
 
 
 class SlotHoldService:
-    HOLD_TTL_SECONDS = 5 * 60      
-    LOCK_TTL_SECONDS = 10          
+    HOLD_TTL_SECONDS = 5 * 60
+    LOCK_TTL_SECONDS = 10
 
     @staticmethod
     def hold_slot(*, user, lesson_id: int, slot_id: int) -> LessonSlot:
@@ -100,6 +103,19 @@ class SlotHoldService:
                 slot.held_by = user
                 slot.held_until = timezone.now() + timedelta(seconds=SlotHoldService.HOLD_TTL_SECONDS)
                 slot.save(update_fields=["status", "held_by", "held_until"])
+
+                AuditService.log(
+                    actor=user,
+                    action=AuditLog.ACTION_HOLD,
+                    entity="LessonSlot",
+                    entity_id=slot.id,
+                    meta={
+                        "lesson_id": lesson_id,
+                        "slot_id": slot.id,
+                        "to_status": "held",
+                        "held_until": slot.held_until.isoformat() if slot.held_until else None,
+                    },
+                )
 
                 return slot
 
