@@ -15,7 +15,6 @@ class Lesson(models.Model):
     description = models.TextField(blank=True)
     duration = models.PositiveIntegerField(help_text="Длительность урока в минутах")
     capacity = models.PositiveIntegerField(default=1, help_text="Максимальное количество учеников в слоте")
-    file_path = models.CharField(max_length=512, blank=True, null=True)
     is_active = models.BooleanField(default=True, help_text="Если False, урок скрыт из поиска")
     created_at = models.DateTimeField(auto_now_add=True)
 
