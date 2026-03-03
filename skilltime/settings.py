@@ -18,16 +18,11 @@ from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-env = environ.Env(
-    DEBUG=(bool, False),
-)
-
-
+env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
-
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
@@ -42,6 +37,9 @@ INSTALLED_APPS = [
     "rest_framework",
     "django_extensions",
     "django_filters",
+    
+    "drf_spectacular",
+    "drf_spectacular_sidecar",
 
     "users",
     "lessons",
@@ -143,6 +141,8 @@ REST_FRAMEWORK = {
     },
 
     "EXCEPTION_HANDLER": "skilltime.api.exceptions.custom_exception_handler",
+    
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 
     "DEFAULT_PAGINATION_CLASS": "skilltime.api.pagination.DefaultLimitOffsetPagination",
 
@@ -199,5 +199,54 @@ CELERY_BEAT_SCHEDULE = {
         "task": "bookings.tasks.archive_bookings",
         "schedule": crontab(hour=3, minute=30),
         "args": (7,),
+    },
+}
+
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "SkillTime API",
+    "DESCRIPTION": "Backend API for SkillTime — online lesson booking system (Django + DRF + Redis + Celery).",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SECURITY": [{"bearerAuth": []}],
+    "AUTHENTICATION_WHITELIST": [],
+
+    "SWAGGER_UI_SETTINGS": {
+        "persistAuthorization": True,
+        "displayRequestDuration": True,
+        "filter": True,
+        "tryItOutEnabled": True,
+    },
+
+    "TAGS": [
+        {"name": "Auth", "description": "Registration, JWT login/refresh/logout, password reset, /me"},
+        {"name": "Lessons", "description": "Lessons CRUD + availability + hold"},
+        {"name": "Bookings", "description": "Confirm/cancel bookings + list endpoints"},
+        {"name": "Files", "description": "Lesson file upload"},
+        {"name": "Audit", "description": "Audit log API"},
+    ],
+
+    "CONTACT": {
+        "name": "SkillTime Backend",
+        "email": "bekarysabdumutalip@gmail.com",
+    },
+    "LICENSE": {"name": "Proprietary"},
+
+    "SERVERS": [
+        {"url": "http://localhost:8000", "description": "Local"},
+        {"url": "https://api.skilltime.example.com", "description": "Production"},
+    ],
+
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "Paste your access token here. Example: `Bearer <JWT>`",
+            }
+        }
     },
 }

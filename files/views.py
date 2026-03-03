@@ -11,11 +11,37 @@ from .services import FileUploadService
 from audit.services import AuditService
 from audit.models import AuditLog
 
+from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from skilltime.api.schema_serializers import ErrorResponseSerializer
+
 
 class LessonFileUploadView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser]
 
+    @extend_schema(
+        tags=["Files"],
+        summary="Upload file to lesson",
+        description=(
+            "Uploads a file and attaches it to a lesson. "
+            "Allowed for lesson owner (teacher) or admin. "
+            "Send multipart/form-data with field name `file`."
+        ),
+        request={
+            "multipart/form-data": {
+                "type": "object",
+                "properties": {"file": {"type": "string", "format": "binary"}},
+                "required": ["file"],
+            }
+        },
+        responses={
+            200: OpenApiTypes.OBJECT,
+            400: ErrorResponseSerializer,
+            403: ErrorResponseSerializer,
+            404: ErrorResponseSerializer,
+        },
+    )
     def post(self, request, lesson_id):
         lesson = get_object_or_404(Lesson, id=lesson_id)
 
@@ -48,10 +74,12 @@ class LessonFileUploadView(APIView):
             },
         )
 
-        return Response({
-            "file_id": str(file_obj.id),
-            "lesson_id": lesson.id,
-            "file_url": file_obj.file.url,
-            "mime": file_obj.mime,
-            "size_bytes": file_obj.size_bytes,
-        })
+        return Response(
+            {
+                "file_id": str(file_obj.id),
+                "lesson_id": lesson.id,
+                "file_url": file_obj.file.url,
+                "mime": file_obj.mime,
+                "size_bytes": file_obj.size_bytes,
+            }
+        )
