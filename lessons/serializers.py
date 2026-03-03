@@ -26,3 +26,7 @@ class LessonSerializer(serializers.ModelSerializer):
 
 class HoldSlotSerializer(serializers.Serializer):
     slot_id = serializers.IntegerField()
+
+
+class AvailabilityQuerySerializer(serializers.Serializer):
+    date = serializers.DateField(input_formats=["%Y-%m-%d"])

@@ -85,14 +85,14 @@ class LessonViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="availability")
     def availability(self, request, pk=None):
-        date = request.query_params.get("date")
-        if not date:
-            raise ValidationError({"date": "Query param 'date' is required (YYYY-MM-DD)"})
+        from .serializers import AvailabilityQuerySerializer
 
-        try:
-            slots = AvailabilityService.get_availability(int(pk), date)
-        except ValueError as e:
-            raise ValidationError({"date": str(e)})
+        qs = AvailabilityQuerySerializer(data=request.query_params)
+        qs.is_valid(raise_exception=True)
+
+        date = qs.validated_data["date"].isoformat()
+
+        slots = AvailabilityService.get_availability(int(pk), date)
 
         return Response({
             "lesson_id": int(pk),
