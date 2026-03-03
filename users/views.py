@@ -7,10 +7,13 @@ from django.shortcuts import get_object_or_404
 from django.core.mail import send_mail
 from django.conf import settings
 
+from drf_spectacular.utils import extend_schema, OpenApiExample
+from skilltime.api.schema_serializers import ErrorResponseSerializer
+
 from .models import User, RefreshToken, PasswordResetToken
 from .serializers import (
     RegisterSerializer, LoginSerializer, RefreshSerializer,
-    LogoutSerializer, ForgotPasswordSerializer, ResetPasswordSerializer
+    LogoutSerializer, ForgotPasswordSerializer, ResetPasswordSerializer, MeSerializer
 )
 from .utils import (
     make_access_token, make_refresh_token,
@@ -21,6 +24,12 @@ from .utils import (
 class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        tags=["Auth"],
+        summary="Register",
+        request=RegisterSerializer,
+        responses={201: None, 400: ErrorResponseSerializer},
+    )
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -43,6 +52,12 @@ class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_scope = "login"  
 
+    @extend_schema(
+        tags=["Auth"],
+        summary="Login",
+        request=LoginSerializer,
+        responses={200: None, 400: ErrorResponseSerializer, 401: ErrorResponseSerializer},
+    )
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -68,6 +83,12 @@ class LoginView(APIView):
 class RefreshView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        tags=["Auth"],
+        summary="Refresh access token",
+        request=RefreshSerializer,
+        responses={200: None, 400: ErrorResponseSerializer, 401: ErrorResponseSerializer},
+    )
     @transaction.atomic
     def post(self, request):
         serializer = RefreshSerializer(data=request.data)
@@ -79,11 +100,9 @@ class RefreshView(APIView):
         if not rtoken.is_valid():
             return Response({"detail": "Invalid token"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # revoke old
         rtoken.revoked = True
         rtoken.save()
 
-        # rotate
         new_refresh = make_refresh_token()
         RefreshToken.objects.create(
             user=rtoken.user,
@@ -97,6 +116,12 @@ class RefreshView(APIView):
 class LogoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        tags=["Auth"],
+        summary="Logout (revoke refresh token)",
+        request=LogoutSerializer,
+        responses={200: None, 400: ErrorResponseSerializer},
+    )
     def post(self, request):
         serializer = LogoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -113,12 +138,17 @@ class ForgotPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_scope = "forgot"  
 
+    @extend_schema(
+        tags=["Auth"],
+        summary="Request password reset",
+        request=ForgotPasswordSerializer,
+        responses={200: None, 400: ErrorResponseSerializer},
+    )
     def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         user = User.objects.filter(email=serializer.validated_data["email"]).first()
-        # не раскрываем существует ли email
         if not user:
             return Response({"detail": "If email exists, link sent"})
 
@@ -143,6 +173,12 @@ class ForgotPasswordView(APIView):
 class ResetPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        tags=["Auth"],
+        summary="Reset password",
+        request=ResetPasswordSerializer,
+        responses={200: None, 400: ErrorResponseSerializer},
+    )
     @transaction.atomic
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
@@ -175,5 +211,11 @@ class ResetPasswordView(APIView):
 class MeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        tags=["Auth"],
+        summary="Get current user (/me)",
+        responses={200: MeSerializer, 401: ErrorResponseSerializer},
+    )
+    @extend_schema(tags=["Audit"], summary="Get audit log detail (admin)")
     def get(self, request):
         return Response({"id": request.user.id, "email": request.user.email, "role": request.user.role})

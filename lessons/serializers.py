@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Lesson
+from .models import Lesson, LessonSlot
 from files.models import FileUpload
 
 
@@ -30,3 +30,20 @@ class HoldSlotSerializer(serializers.Serializer):
 
 class AvailabilityQuerySerializer(serializers.Serializer):
     date = serializers.DateField(input_formats=["%Y-%m-%d"])
+
+
+class LessonSlotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LessonSlot
+        fields = ["id", "lesson", "starts_at", "ends_at", "status", "held_by", "held_until"]
+        read_only_fields = ["id", "lesson", "status", "held_by", "held_until"]
+
+
+class LessonSlotCreateSerializer(serializers.Serializer):
+    starts_at = serializers.DateTimeField()
+    ends_at = serializers.DateTimeField()
+
+    def validate(self, attrs):
+        if attrs["ends_at"] <= attrs["starts_at"]:
+            raise serializers.ValidationError({"ends_at": "ends_at must be after starts_at"})
+        return attrs
